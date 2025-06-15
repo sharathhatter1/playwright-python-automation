@@ -43,11 +43,7 @@ playwright install
 python run_tests.py
 
 # Run specific tests
-python run_tests.py --marker smoke
-python run_tests.py --test tests/test_search.py
-
-# Run in headed mode with Firefox
-python run_tests.py --browser firefox --headed
+python run_test_with_params.py --browser firefox --parallel 2 --test_file tests/test_simple.py --headless false --allure
 
 # Run with reporting
 python run_tests.py --allure --html

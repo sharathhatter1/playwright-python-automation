@@ -1,0 +1,55 @@
+jenkins:
+   systemMessage: "Jenkins configured automatically for Test Automation Framework"
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: admin
+          password: admin
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+  remotingSecurity:
+    enabled: true
+
+unclassified:
+  location:
+    url: http://localhost:8080/
+  
+tool:
+  allure:
+    installations:
+      - name: "Allure"
+        home: "/usr/local/bin/allure"
+  python:
+    installations:
+      - name: "Python3"
+        home: "/usr/bin/python3"
+        properties:
+          - installSource:
+              installers:
+                - command:
+                    command: "/usr/bin/python3"
+                    toolHome: "/usr"
+
+jobs:
+  - script: >
+      pipelineJob('TestAutomation') {
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote {
+                  url('YOUR_REPOSITORY_URL')
+                }
+                branch('main')
+              }
+            }
+            scriptPath('Jenkinsfile')
+          }
+        }
+        triggers {
+          cron('0 0 * * *')
+        }
+      }
+ 

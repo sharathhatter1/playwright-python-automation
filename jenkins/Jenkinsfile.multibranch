@@ -1,0 +1,121 @@
+//  Multibranch Pipeline Jenkinsfile
+pipeline {
+    agent any
+    
+    parameters {
+        choice(name: 'BROWSER', choices: ['chromium', 'firefox', 'webkit'], description: 'Browser to run tests with')
+        choice(name: 'TEST_GROUP', choices: ['all', 'smoke', 'search', 'cart', 'checkout'], description: 'Test group to run')
+        booleanParam(name: 'HEADLESS', defaultValue: true, description: 'Run in headless mode')
+        booleanParam(name: 'PARALLEL', defaultValue: true, description: 'Run tests in parallel')
+        string(name: 'WORKERS', defaultValue: '4', description: 'Number of parallel workers')
+    }
+    
+    environment {
+        // Set environment based on branch
+        ENVIRONMENT = "${BRANCH_NAME == 'main' ? 'staging' : 'dev'}"
+    }
+    
+    stages {
+        stage('Setup') {
+            steps {
+                echo "Setting up test environment for ${BRANCH_NAME} branch"
+                sh 'python -m pip install --upgrade pip'
+                sh 'pip install -r requirements.txt'
+                sh 'playwright install ${BROWSER}'
+            }
+        }
+        
+        stage('Run Smoke Tests') {
+            steps {
+                echo "Running smoke tests on ${ENVIRONMENT} environment"
+                script {
+                    def cmd = "python run_tests.py --browser ${params.BROWSER} --headless --markers smoke"
+                    if (params.PARALLEL) {
+                        cmd += " --parallel --workers ${params.WORKERS}"
+                    }
+                    
+                    withEnv([
+                        "BASE_URL=https://automationexercise.com",
+                        "ENVIRONMENT=${ENVIRONMENT}",
+                        "BROWSER=${params.BROWSER}",
+                        "HEADLESS=${params.HEADLESS}"
+                    ]) {
+                        sh cmd
+                    }
+                }
+            }
+        }
+        
+        stage('Run Full Test Suite') {
+            when {
+                expression { BRANCH_NAME == 'main' || params.TEST_GROUP != 'smoke' }
+            }
+            steps {
+                echo "Running ${params.TEST_GROUP} tests on ${ENVIRONMENT} environment"
+                script {
+                    def cmd = "python run_tests.py --browser ${params.BROWSER}"
+                    
+                    if (params.TEST_GROUP != 'all') {
+                        cmd += " --markers ${params.TEST_GROUP}"
+                    }
+                    
+                    if (params.HEADLESS) {
+                        cmd += " --headless"
+                    }
+                    
+                    if (params.PARALLEL) {
+                        cmd += " --parallel --workers ${params.WORKERS}"
+                    }
+                    
+                    cmd += " --allure --html"
+                    
+                    withEnv([
+                        "BASE_URL=https://automationexercise.com",
+                        "ENVIRONMENT=${ENVIRONMENT}",
+                        "BROWSER=${params.BROWSER}",
+                        "HEADLESS=${params.HEADLESS}"
+                    ]) {
+                        sh cmd
+                    }
+                }
+            }
+        }
+        
+        stage('Generate Reports') {
+            steps {
+                echo "Generating test reports"
+                sh 'allure generate allure-results --clean -o allure-report'
+            }
+        }
+    }
+    
+    post {
+        always {
+            archiveArtifacts artifacts: 'screenshots/**,videos/**,logs/**,reports/**', allowEmptyArchive: true
+            junit allowEmptyResults: true, testResults: 'test-results/*.xml'
+            allure([
+                includeProperties: false,
+                jdk: '',
+                properties: [],
+                reportBuildPolicy: 'ALWAYS',
+                results: [[path: 'allure-results']]
+            ])
+        }
+        
+        success {
+            echo "Tests passed on ${BRANCH_NAME} branch!"
+        }
+        
+        failure {
+            echo "Tests failed on ${BRANCH_NAME} branch!"
+            script {
+                if (BRANCH_NAME == 'main') {
+                    mail to: 'qa-team@example.com',
+                         subject: "Failed Test on main: ${currentBuild.fullDisplayName}",
+                         body: "Tests failed on ${env.BUILD_URL}"
+                }
+            }
+        }
+    }
+}
+ 
